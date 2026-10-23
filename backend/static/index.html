@@ -77,6 +77,8 @@
   @keyframes spin { to{transform:rotate(360deg)} }
   .ring { transform-box:fill-box; transform-origin:center; animation:ring 2s ease-out infinite; }
   @keyframes ring { from{transform:scale(.6);opacity:.9} to{transform:scale(2.4);opacity:0} }
+  .bgctl { margin-top:10px; font:600 11px 'JetBrains Mono',monospace; color:var(--muted); }
+  .bgctl input[type=range] { flex:1; min-width:90px; max-width:220px; accent-color:var(--info); }
 
   /* fleet cards */
   .fleet { display:grid; grid-template-columns:repeat(auto-fit,minmax(138px,1fr)); gap:10px; margin-top:14px; }
@@ -153,11 +155,20 @@
             <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
             <radialGradient id="sens"><stop offset="0" stop-color="#ff4d6d" stop-opacity=".0"/><stop offset=".8" stop-color="#ff4d6d" stop-opacity=".05"/><stop offset="1" stop-color="#ff4d6d" stop-opacity=".25"/></radialGradient>
           </defs>
+          <image id="bgimg" x="0" y="0" width="400" height="300" preserveAspectRatio="xMidYMid meet" opacity=".5" style="display:none"/>
           <rect width="400" height="300" fill="url(#grid)"/><rect width="400" height="300" fill="url(#grid2)"/>
           <g id="routes"></g><g id="obst"></g><g id="wps"></g><g id="trails"></g><g id="drones"></g>
         </svg>
         <div class="scan"></div>
         <div class="hud" id="hud">SECTOR 7 · <b>T+0s</b></div>
+      </div>
+      <div class="controls bgctl">
+        <input type="file" id="bg-file" accept="image/*" hidden>
+        <button id="bg-upload">🗺 Background image</button>
+        <label for="bg-opacity">Opacity</label>
+        <input type="range" id="bg-opacity" min="0" max="100" value="50" disabled>
+        <span id="bg-opacity-v">50%</span>
+        <button id="bg-remove" disabled>✕ Remove</button>
       </div>
       <div class="fleet" id="fleet"></div>
       <div class="telemetry">
@@ -215,6 +226,40 @@ $('loop').onclick = () => post('/api/loop', {enabled: !loopOn});
 $('reset').onclick = () => post('/api/reset', {scenario});
 $('op-hold').onclick = () => post('/api/operator', {action:'hold', drone:sel});
 $('op-resume').onclick = () => post('/api/operator', {action:'resume', drone:sel});
+
+// background map image (display only: never sent to the backend or to Jev); kept in this browser across reloads
+const BG_KEY = 'bg-image', BG_OP_KEY = 'bg-opacity';
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+};
+function setBgOpacity(pct) {
+  $('bgimg').setAttribute('opacity', pct / 100);
+  $('bg-opacity').value = pct; $('bg-opacity-v').textContent = pct + '%';
+  store.set(BG_OP_KEY, String(pct));
+}
+function setBgImage(url) {
+  const img = $('bgimg');
+  if (url) img.setAttribute('href', url); else img.removeAttribute('href');
+  img.style.display = url ? '' : 'none';
+  $('bg-opacity').disabled = $('bg-remove').disabled = !url;
+}
+$('bg-upload').onclick = () => $('bg-file').click();
+$('bg-file').onchange = e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f || !f.type.startsWith('image/')) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    setBgImage(rd.result);
+    if (!store.set(BG_KEY, rd.result)) console.warn('background image too large to remember across reloads');
+  };
+  rd.readAsDataURL(f);
+};
+$('bg-opacity').oninput = e => setBgOpacity(+e.target.value);
+$('bg-remove').onclick = () => { setBgImage(null); store.set(BG_KEY, null); };
+setBgOpacity(+(store.get(BG_OP_KEY) ?? 50));
+setBgImage(store.get(BG_KEY));
 
 const pts = (list, P) => list.map(n => P[n].join(',')).join(' ');
 const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
